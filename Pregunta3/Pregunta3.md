@@ -24,3 +24,60 @@ La simulación de tareas científicas se realiza en el método `simulate_scienti
 - Se lleva a cabo la recolección de basura en cada nodo.
 - Se sincronizan los relojes de los nodos.
 - Se finalizan los procesos para detectar la terminación global.
+  
+Resultados:
+
+```
+Starting the network
+[(0, 19.333333333333332), (1, 19.333333333333332), (2, 19.333333333333332)]
+Nodo 2 ingresando a la seccion critica
+Nodo 2 dejando la seccion critica
+Nodo 2 ingresando a la seccion critica
+Nodo 2 dejando la seccion critica
+Nodo 0 ingresando a la seccion critica
+Nodo 0 dejando la seccion critica
+Nodo 1 ingresando a la seccion critica
+Nodo 1 dejando la seccion critica
+Nodo 2 ingresando a la seccion critica
+Nodo 2 dejando la seccion critica
+Nodo 2 ingresando a la seccion critica
+Nodo 2 dejando la seccion critica
+Nodo 0 ingresando a la seccion critica
+Nodo 0 dejando la seccion critica
+Nodo 0 ingresando a la seccion critica
+Nodo 0 dejando la seccion critica
+Asignado obj0 en: 0
+Recoleccion de basura completa en Nodo 0
+Asignado obj1 en: 0
+Recoleccion de basura completa en Nodo 1
+Asignado obj2 en: 0
+Recoleccion de basura completa en Nodo 2
+[(0, 41.666666666666664), (1, 41.666666666666664), (2, 41.666666666666664)]
+Node 0 finished process
+Node 0 detected global termination
+Node 0 detected global termination
+```
+
+
+
+1. "Starting the network": Indica que la red de nodos ha comenzado a inicializarse.
+
+2. "[(0, 19.333333333333332), (1, 19.333333333333332), (2, 19.333333333333332)]": 
+   Este es el resultado de la primera sincronización de relojes. Cada tupla representa (id_nodo, tiempo_sincronizado). Todos los nodos han sincronizado sus relojes a 19.333333333333332.
+
+3. Las líneas "Nodo X ingresando a la seccion critica" seguidas por "Nodo X dejando la seccion critica":
+   Estas líneas muestran la ejecución del algoritmo de exclusión mutua de Ricart-Agrawala. Cada nodo solicita acceso a la sección crítica, entra en ella, y luego la abandona. Esto ocurre varias veces para diferentes nodos, simulando múltiples accesos a recursos compartidos.
+
+4. "Asignado objX en: 0" seguido por "Recoleccion de basura completa en Nodo X":
+   Estas líneas muestran la ejecución del algoritmo de recolección de basura de Cheney en cada nodo. Cada nodo asigna un objeto y luego realiza una recolección de basura.
+
+5. "[(0, 41.666666666666664), (1, 41.666666666666664), (2, 41.666666666666664)]":
+   Este es el resultado de la segunda sincronización de relojes. Observa que el tiempo ha avanzado desde la primera sincronización, reflejando el paso del tiempo durante la ejecución de las tareas.
+
+6. "Node 0 finished process":
+   Indica que el Nodo 0 ha terminado su proceso.
+
+7. "Node 0 detected global termination" (repetido):
+   Estas líneas indican que el Nodo 0 ha detectado la terminación global del sistema. Esto es parte del algoritmo de Dijkstra-Scholten para la detección de terminación. 
+
+
