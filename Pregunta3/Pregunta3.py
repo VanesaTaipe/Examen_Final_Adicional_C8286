@@ -1,129 +1,215 @@
-import time 
-import random 
+import time
+import random
 
 class Message:
     def __init__(self, sender, content, timestamp):
-        self.sender = sender      # Almacena el ID del nodo que envía el mensaje
-        self.content = content    # Almacena el contenido del mensaje
-        self.timestamp = timestamp  # Almacena la marca de tiempo del mensaje
+        self.sender = sender
+        self.content = content
+        self.timestamp = timestamp
 
 class Node:
     def __init__(self, node_id, total_nodes, network):
-        self.node_id = node_id        # ID único del nodo
-        self.total_nodes = total_nodes  # Número total de nodos en la red
-        self.network = network        # Referencia a la red a la que pertenece el nodo
-        self.clock = 0                # Reloj lógico del nodo
-        self.parent = None            # Padre en el árbol de detección de terminación
-        self.children = set()         # Conjunto de hijos en el árbol de detección de terminación
-        self.active = True            # Indica si el nodo está activo
-        self.request_queue = []       # Cola de solicitudes para exclusión mutua
-        self.replies_received = 0     # Número de respuestas recibidas para exclusión mutua
-        self.memory = []              # Simula la memoria del nodo para recolección de basura
+        self.node_id = node_id
+        self.total_nodes = total_nodes
+        self.network = network
+        self.clock = random.randint(0, 30)  # Inicializa el reloj con un tiempo aleatorio
+        self.mutex = RicartAgrawalaMutex(self)  # Crea el objeto para manejar la exclusión mutua
+        self.collector = CheneyCollector(10)  # Crea el recolector de basura
+        self.parent = None  # Para el algoritmo Dijkstra-Scholten
+        self.children = set()  # Para el algoritmo Dijkstra-Scholten
+        self.active = True  # Indica si el nodo está activo
 
     def send_message(self, recipient_id, content):
-        message = Message(self.node_id, content, self.clock)  # Crea un nuevo mensaje
-        self.network.deliver_message(recipient_id, message)  # Envía el mensaje a través de la red
+        # Envía un mensaje a otro nodo
+        if recipient_id is not None and 0 <= recipient_id < self.total_nodes:
+            message = Message(self.node_id, content, self.clock)
+            self.network.deliver_message(recipient_id, message)
+        else:
+            print(f"Invalid recipient_id: {recipient_id}")
 
     def receive_message(self, message):
+        # Procesa los mensajes recibidos
+        if message is None:
+            print(f"Node {self.node_id} received None message")
+            return
         self.clock = max(self.clock, message.timestamp) + 1  # Actualiza el reloj lógico
-        if message.content == "REQUEST":
-            self.handle_mutex_request(message)  # Maneja solicitud de exclusión mutua
+        if message.content == "TERMINATE":
+            self.receive_termination(message.sender)
+        elif message.content == "REQUEST":
+            self.mutex.receive_request(message.sender)
         elif message.content == "REPLY":
-            self.handle_mutex_reply(message)  # Maneja respuesta de exclusión mutua
-        elif message.content == "TERMINATE":
-            self.handle_termination(message)  # Maneja mensaje de terminación
-
-    def handle_mutex_request(self, message):
-        self.request_queue.append((message.timestamp, message.sender))  # Añade solicitud a la cola
-        self.request_queue.sort()  # Ordena la cola de solicitudes
-        self.send_message(message.sender, "REPLY")  # Envía respuesta al solicitante
-
-    def handle_mutex_reply(self, message):
-        self.replies_received += 1  # Incrementa el contador de respuestas recibidas
-        if self.replies_received == self.total_nodes - 1:  # Si se recibieron todas las respuestas
-            self.enter_critical_section()  # Entra en la sección crítica
-
-    def enter_critical_section(self):
-        print(f"Nodo {self.node_id} ingresando a la sección crítica")  # Notifica entrada a sección crítica
-        time.sleep(0.1)  # Simula trabajo en la sección crítica
-        self.leave_critical_section()  # Sale de la sección crítica
-
-    def leave_critical_section(self):
-        self.replies_received = 0  # Reinicia el contador de respuestas
-        self.request_queue = [(t, n) for t, n in self.request_queue if n != self.node_id]  # Limpia la cola
-        for _, node_id in self.request_queue:
-            self.send_message(node_id, "REPLY")  # Envía respuestas a las solicitudes pendientes
-        print(f"Nodo {self.node_id} dejando la sección crítica")  # Notifica salida de sección crítica
+            self.mutex.receive_reply()
 
     def request_mutex(self):
-        self.clock += 1  # Incrementa el reloj lógico
-        self.request_queue.append((self.clock, self.node_id))  # Añade su propia solicitud a la cola
-        for node_id in range(self.total_nodes):
-            if node_id != self.node_id:
-                self.send_message(node_id, "REQUEST")  # Envía solicitud a todos los demás nodos
+        # Solicita acceso a la sección crítica
+        self.mutex.request_access()
 
-    def handle_termination(self, message):
-        if self.parent is None and message.sender != self.node_id:
-            self.parent = message.sender  # Establece el padre en el árbol de terminación
-            self.children.add(message.sender)  # Añade el remitente como hijo
-        elif message.sender in self.children:
-            self.children.remove(message.sender)  # Elimina el hijo que ha terminado
-        self.check_termination()  # Verifica si el nodo ha terminado
+    def release_mutex(self):
+        # Libera la sección crítica
+        self.mutex.leave_critical_section()
 
-    def check_termination(self):
-        if not self.active and not self.children:  # Si el nodo no está activo y no tiene hijos
+    def receive_termination(self, child_id):
+        # Maneja la recepción de un mensaje de terminación (Dijkstra-Scholten)
+        if child_id in self.children:
+            self.children.remove(child_id)
+        if not self.active and not self.children:
             if self.parent is not None:
-                self.send_message(self.parent, "TERMINATE")  # Notifica terminación al padre
-    def synchronize_clock(self, average_time):
-        self.clock = average_time  # Ajusta el reloj al tiempo promedio
+                self.send_message(self.parent, "TERMINATE")
+            else:
+                print(f"Node {self.node_id} detected global termination")
+
+    def synchronize_clock(self, master_time):
+        # Sincroniza el reloj del nodo con el tiempo maestro
+        self.clock = master_time
 
     def collect_garbage(self):
-        new_memory = []
-        for obj in self.memory:
+        # Realiza la recolección de basura
+        addr = self.collector.allocate(f"obj{self.node_id}")
+        print(f"Asignado obj{self.node_id} en: {addr}")
+        self.collector.collect()
+        print(f"Recoleccion de basura completa en Nodo {self.node_id}")
+
+    def start_process(self):
+        # Inicia el proceso del nodo
+        self.active = True
+        if self.parent is None and self.node_id != 0:
+            self.parent = 0
+            self.send_message(0, "ACTIVATE")
+
+    def finish_process(self):
+        # Finaliza el proceso del nodo
+        self.active = False
+        if not self.children:
+            if self.parent is not None:
+                self.send_message(self.parent, "TERMINATE")
+            else:
+                print(f"Node {self.node_id} finished process")
+
+class RicartAgrawalaMutex:
+    def __init__(self, node):
+        self.node = node
+        self.requesting = False
+        self.replies_received = 0
+
+    def request_access(self):
+        # Solicita acceso a la sección crítica
+        self.requesting = True
+        self.replies_received = 0
+        for i in range(self.node.total_nodes):
+            if i != self.node.node_id:
+                self.node.send_message(i, "REQUEST")
+        self.check_enter_cs()
+
+    def receive_request(self, sender_id):
+        # Maneja la recepción de una solicitud de acceso
+        if not self.requesting or sender_id < self.node.node_id:
+            self.node.send_message(sender_id, "REPLY")
+        # else: defer the reply
+
+    def receive_reply(self):
+        # Maneja la recepción de una respuesta
+        self.replies_received += 1
+        self.check_enter_cs()
+
+    def check_enter_cs(self):
+        # Verifica si se puede entrar a la sección crítica
+        if self.replies_received == self.node.total_nodes - 1:
+            self.enter_critical_section()
+
+    def enter_critical_section(self):
+        # Entra a la sección crítica
+        print(f"Nodo {self.node.node_id} ingresando a la seccion critica")
+        time.sleep(1)
+        self.leave_critical_section()
+
+    def leave_critical_section(self):
+        # Sale de la sección crítica
+        self.requesting = False
+        print(f"Nodo {self.node.node_id} dejando la seccion critica")
+        for i in range(self.node.total_nodes):
+            if i != self.node.node_id:
+                self.node.send_message(i, "REPLY")
+
+class CheneyCollector:
+    def __init__(self, size):
+        self.size = size
+        self.from_space = [None] * size
+        self.to_space = [None] * size
+        self.free_ptr = 0
+
+    def allocate(self, obj):
+        # Asigna un objeto en la memoria
+        if self.free_ptr >= self.size:
+            self.collect()
+        addr = self.free_ptr
+        self.from_space[addr] = obj
+        self.free_ptr += 1
+        return addr
+
+    def collect(self):
+        # Realiza la recolección de basura
+        self.to_space = [None] * self.size
+        self.free_ptr = 0
+        for obj in self.from_space:
             if obj is not None:
-                new_memory.append(obj)  # Copia objetos no nulos a la nueva memoria
-        self.memory = new_memory  # Actualiza la memoria con solo objetos no nulos
-        print(f"Nodo {self.node_id}: Recolección de basura completa")  # Notifica recolección completada
+                self.copy(obj)
+        self.from_space, self.to_space = self.to_space, self.from_space
+
+    def copy(self, obj):
+        # Copia un objeto durante la recolección de basura
+        addr = self.free_ptr
+        self.to_space[addr] = obj
+        self.free_ptr += 1
+        return addr
 
 class Network:
     def __init__(self, num_nodes):
-        self.nodes = [Node(i, num_nodes, self) for i in range(num_nodes)]  # Crea los nodos de la red
+        self.num_nodes = num_nodes
+        self.nodes = [Node(i, num_nodes, self) for i in range(num_nodes)]
 
     def deliver_message(self, recipient_id, message):
-        self.nodes[recipient_id].receive_message(message)  # Entrega el mensaje al nodo destinatario
+        # Entrega un mensaje a un nodo específico
+        if recipient_id is not None and 0 <= recipient_id < self.num_nodes:
+            self.nodes[recipient_id].receive_message(message)
+        else:
+            print(f"Invalid recipient_id: {recipient_id}")
 
     def start(self):
-        print("Iniciando la red")  # Notifica inicio de la simulación
-        self.synchronize_clocks()  # Sincroniza los relojes de los nodos
-        self.simulate_mutex_requests()  # Simula solicitudes de exclusión mutua
-        self.simulate_garbage_collection()  # Simula recolección de basura
-        self.stop()  # Detiene la simulación
-
-    def stop(self):
-        print("Deteniendo la red")  # Notifica detención de la simulación
+        # Inicia la red
+        print("Starting the network")
+        self.synchronize_clocks()
         for node in self.nodes:
-            node.active = False  # Marca todos los nodos como inactivos
-        self.nodes[0].check_termination()  # Inicia la detección de terminación desde el nodo 0
+            node.start_process()
 
     def synchronize_clocks(self):
-        average_time = sum(node.clock for node in self.nodes) / len(self.nodes)  # Calcula tiempo promedio
+        # Sincroniza los relojes de todos los nodos
+        master_time = sum(node.clock for node in self.nodes) / len(self.nodes)
         for node in self.nodes:
-            node.synchronize_clock(average_time)  # Sincroniza cada nodo al tiempo promedio
-        print("Relojes sincronizados")  # Notifica sincronización completada
+            node.synchronize_clock(master_time)
+        print([(node.node_id, node.clock) for node in self.nodes])
 
-    def simulate_mutex_requests(self):
-        for node in self.nodes[:3]:  # Para los primeros 3 nodos
-            node.request_mutex()  # Simula una solicitud de exclusión mutua
-            time.sleep(0.5)  # Espera entre solicitudes
-
-    def simulate_garbage_collection(self):
+    def simulate_scientific_task(self):
+        # Simula la ejecución de tareas científicas
+        # Realizar solicitudes de exclusión mutua
+        for _ in range(3):
+            node = random.choice(self.nodes)
+            node.request_mutex()
+        
+        # Realizar la recolección de basura en los nodos
         for node in self.nodes:
-            for _ in range(5):
-                node.memory.append(f"obj{_}")  # Añade objetos a la memoria del nodo
-            node.collect_garbage()  # Realiza recolección de basura en el nodo
-def main():
-    network = Network(3)  # Crea una red con 5 nodos
-    network.start()  # Inicia la simulación de la red
+            node.collect_garbage()
+
+        # Sincronizar los relojes de los nodos
+        self.synchronize_clocks()
+
+        # Finalizar procesos para detectar terminación
+        for node in self.nodes:
+            node.finish_process()
+
+        # Esperar a que se detecte la terminación global
+        time.sleep(2)
 
 if __name__ == "__main__":
-    main()  
+    network = Network(3)  # Crea una red con 3 nodos
+    network.start()  # Inicia la red
+    network.simulate_scientific_task()  # Simula la ejecución de tareas científicas
