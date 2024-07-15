@@ -122,7 +122,7 @@ class Network:
                 node.memory.append(f"obj{_}")  # Añade objetos a la memoria del nodo
             node.collect_garbage()  # Realiza recolección de basura en el nodo
 def main():
-    network = Network(5)  # Crea una red con 5 nodos
+    network = Network(3)  # Crea una red con 5 nodos
     network.start()  # Inicia la simulación de la red
 
 if __name__ == "__main__":
