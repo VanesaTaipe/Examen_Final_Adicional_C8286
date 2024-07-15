@@ -40,10 +40,15 @@
 Resultados:
 
 INFO:root:Added cell: print("Hello, World!")
+
 INFO:root:Executing cell 0: print("Hello, World!")
+
 Hello, World!
+
 INFO:root:Executing cell 0: print("Hello, World!")
+
 Hello, World!
+
 INFO:root:Modified cell 0: print("Modified cell")
 
 ---------------------------------------------
